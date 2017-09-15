@@ -1,0 +1,18 @@
+//A sample main scss file. Use this as a starting point for your css.
+
+//partials!
+@import "partial_styles";
+
+//variables!
+$blue: blue;
+
+//nesting!
+.main {
+  .other {
+    font-weight:bold;
+    color: $blue;
+    font-size:$main-font-size;
+  }
+}
+
+//more: http://sass-lang.com/guide
