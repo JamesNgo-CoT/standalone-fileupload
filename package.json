@@ -76,7 +76,7 @@
 		"includeModeling": true,
 		"includeWebtrends": true,
 		"includeBootbox" : true,
-		"includeDropzone": true,
+		"includeDropzone": false,
 		"includeModal" : true
 	}
 }

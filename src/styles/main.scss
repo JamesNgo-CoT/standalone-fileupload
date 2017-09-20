@@ -1,18 +1,6 @@
-//A sample main scss file. Use this as a starting point for your css.
-
-//partials!
-@import "partial_styles";
-
-//variables!
-$blue: blue;
-
-//nesting!
-.main {
-  .other {
-    font-weight:bold;
-    color: $blue;
-    font-size:$main-font-size;
-  }
+.dropzone {
+	border: 1px solid #ccc;
+	border-radius: 4px;
+  padding: 6px 12px;
+  min-height: 86px;
 }
-
-//more: http://sass-lang.com/guide

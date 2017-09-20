@@ -6,6 +6,7 @@
 	],
 	"private": true,
 	"dependencies": {
-		"core": "https://github.com/CityofToronto/corejs.git#3.2.2"
+		"core": "https://github.com/CityofToronto/corejs.git#3.2.2",
+		"dropbox": "^0.10.3"
 	}
 }
