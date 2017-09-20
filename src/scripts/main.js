@@ -38,6 +38,7 @@
 			});
 		});
 	}
+
 	CotForm.prototype = Object.create(originalCotForm.prototype);
 	CotForm.prototype.constructor = CotForm;
 
@@ -65,7 +66,7 @@
 									break;
 								case 'dropzone':
 									// NEW DROPZONE
-									form.cotForm.dropzoneData[field['id']].resetDropzone(value);
+									form.cotForm.dropzones[field['id']].resetFiles(value);
 									break;
 								default:
 									$('#' + field['id']).val(value);
@@ -77,6 +78,7 @@
 			});
 		}
 	};
+
 	CotForm.prototype._watchChanges = function() {
 		var form = this;
 		if (this._isRendered) {
@@ -136,102 +138,167 @@
 		}
 	};
 
-	CotForm.prototype.render = function (options) {
+	CotForm.prototype.render = function(options) {
 		originalCotForm.prototype.render.call(this, options);
-		if (this.cotForm.finalScripts) {
-			for (const script of this.cotForm.finalScripts) {
+		if (this.cotForm.finalizerScripts) {
+			for (const script of this.cotForm.finalizerScripts) {
 				script();
 			}
 		}
 	}
 
-	CotForm.prototype.finalizeDropzone = function() {
-		if (this.cotForm.dropzoneData) {
-			console.log(this.cotForm.dropzoneData);
-			// TODO
-			for (const key in this.cotForm.dropzoneData) {
-				const data = this.cotForm.dropzoneData[key];
-				const baseBinIds = data.baseFiles.map((baseFile) => baseFile.binId);
-				const finalBinIds = data.finalFiles.map((fileFile) => fileFile.binId);
-				console.log('-->', data, baseBinIds, finalBinIds);
-				console.log('deletable', baseBinIds.filter((binId) => finalBinIds.indexOf(binId) == -1));
-				console.log('keepable', finalBinIds.filter((binId) => baseBinIds.indexOf(binId) == -1));
+	CotForm.prototype.finalizeDropzone = function(cbk) {
+		if (this.cotForm.dropzones) {
+			const keys = Object.keys(this.cotForm.dropzones);
+			let idx = 0;
+			const finalize = () => {
+				if (idx < keys.length) {
+					this.cotForm.dropzones[keys[idx]].finalize(() => {
+						idx = idx + 1;
+						finalize();
+					});
+				} else {
+					if (cbk) {
+						cbk();
+					}
+				}
 			}
+			finalize();
 		}
 	}
 })(CotForm);
 
-// cot_form.prototype.dropzoneFieldRender = function(fieldOpts, label) {
 cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
-	const id = fieldOpts.id;
-	const $el = $(`<div><input id="${id}" type="hidden"><div class="dropzone" id="${id}Dropzone" style="margin-bottom: 5px;"></div><button class="btn btn-default" id="${id}Btn" style="margin: 0;">Select File to Upload</button></div>`);
-
-	const $hidden = $(`#${id}`, $el);
-	if (!this.dropzoneData) {
-		this.dropzoneData = {};
+	if (!this.dropzones) {
+		this.dropzones = {};
 	}
-	const data = this.dropzoneData[id] = {
-		baseFiles: [],
-		finalFiles: [],
-		resetDropzone: (value) => {
-			if (!value || typeof value !== 'object') {
-				value = [];
-			}
-			data.baseFiles = value.filter(() => true);
-			data.finalFiles = value.filter(() => true);
-			$hidden.val(JSON.stringify(value)).trigger('change');
+	if (!this.finalizerScripts) {
+		this.finalizerScripts = [];
+	}
 
-			const dz = Dropzone.forElement(`#${id}Dropzone`);
-			dz.removeAllFiles(true);
-			for (const file of value) {
-				const finalFile = {
-					binId: file.binId,
-					name: file.name,
-					type: file.type,
-					size: file.size
-				};
-				dz.emit('addedfile', finalFile);
-				dz.emit('complete', finalFile);
-				dz.files.push(finalFile); // Fixes a bug
-			}
-		}
-	};
+	const $el = $(`<div><input id="${fieldOpts.id}" type="hidden"><div class="dropzone" id="${fieldOpts.id}Dropzone" style="margin-bottom: 5px;"></div><button class="btn btn-default" id="${fieldOpts.id}Btn" style="margin: 0;">Select File to Upload</button></div>`);
 
-	const options = $.extend({
-		addRemoveLinks: true,
-		clickable: `#${id}Btn`,
-		init: function() {
-			const value = !fieldOpts.value ? [] : typeof fieldOpts.value == 'object' ? fieldOpts.value : JSON.parse(fieldOpts.value);
-			data.resetDropzone(value);
-			this.on('success', function(file, responseString) {
-				data.finalFiles.push({
-					binId: JSON.parse(responseString).BIN_ID[0],
-					name: file.name,
-					type: file.type,
-					size: file.size
+	this.finalizerScripts.push(() => {
+		const $hiddenInput = $(`#${fieldOpts.id}`);
+		const options = $.extend({
+			addRemoveLinks: true,
+			clickable: `#${fieldOpts.id}Btn`,
+			url: fieldOpts.options.url,
+
+			init: function() {
+				this.initFiles = [];
+				this.on('completemultiple', function() {
+					this.setHiddenIntput();
 				});
-				$(`#${id}`).val(JSON.stringify(data.finalFiles)).trigger('change');
-			});
-			this.on('removedfile', function(file) {
-				let binId = file.binId || JSON.parse(file.xhr.responseText).BIN_ID[0];
-				let counter = 0;
-				while(counter < data.finalFiles.length) {
-					if (data.finalFiles[counter].binId == binId) {
-						data.finalFiles.splice(counter, 1);
-					} else {
-						counter = counter + 1;
-					}
-				}
-				$(`#${id}`).val(JSON.stringify(data.finalFiles)).trigger('change');
-			});
-		}
-	}, fieldOpts.options);
+				this.on('removedfile', function() {
+					this.setHiddenIntput();
+				});
+			},
+		}, fieldOpts.options);
 
-	if (!this.finalScripts) {
-		this.finalScripts = [];
-	}
-	this.finalScripts.push(() => {
-		$(`#${id}Dropzone`).dropzone(options);
+		const dz = this.dropzones[fieldOpts.id] = new Dropzone(`#${fieldOpts.id}Dropzone`, options);
+		dz.resetFiles = function(files) {
+			if (!Array.isArray(files)) {
+				try {
+					files = JSON.parse(files);
+					if (!Array.isArray(files)) {
+						files = [];
+					}
+				} catch (e) {
+					files = [];
+				}
+			}
+			this.initFiles = files.map((file) => {
+				file.status = 'initial';
+				return file;
+			});
+			this.removeAllFiles(true);
+			for (const file of files) {
+				this.emit('addedfile', file);
+				this.emit('complete', file);
+				this.files.push(file);
+			}
+			this.setHiddenIntput();
+		};
+		dz.setHiddenIntput = function() {
+			const value = this.files.filter((file) => file.status == 'initial' || file.status == 'success').map((file) => {
+				return {
+					bin_id: file.bin_id || JSON.parse(file.xhr.responseText).BIN_ID[0],
+					name: file.name,
+					size: file.size,
+					type: file.type
+				};
+			});
+			$hiddenInput.val(JSON.stringify(value)).trigger('change');
+			console.log($hiddenInput.val()); // TODO - Remove console log.
+		};
+		dz.finalize = function(cbk) {
+
+			//Step 2 - Delete and keep uploaded files.
+			const step2 = () => {
+				const deletable = this.initFiles.filter((file) => this.files.indexOf(file) == -1).map((file) => file.bin_id || JSON.parse(file.xhr.responseText).BIN_ID[0]);
+				// let deletableIdx = 0;
+				// const doDeletable = () => {
+				// 	if (deletableIdx < deletable.length) {
+				// 		console.log('DELETE URL', `https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/binUtils/${fieldOpts.app}/${fieldOpts.group}/${deletable[deletableIdx]}/delete?sid=uIX-SlHU-zzYqn9urgJRtyTMno9Hvz5tL3y7EnfFXwo`);
+				// 		$.get(`https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/binUtils/${fieldOpts.app}/${fieldOpts.group}/${deletable[deletableIdx]}/delete?sid=uIX-SlHU-zzYqn9urgJRtyTMno9Hvz5tL3y7EnfFXwo`, (data) => {
+				// 			console.log('DELET', data);
+				// 			deletableIdx = deletableIdx + 1;
+				// 			doKeepable();
+				// 		});
+				// 	} else {
+				// 		if (cbk) {
+				// 			this.resetFiles(this.files);
+				// 			cbk();
+				// 		}
+				// 	}
+				// };
+
+				const keepable = this.files.filter((file) => this.initFiles.indexOf(file) == -1).map((file) => file.bin_id || JSON.parse(file.xhr.responseText).BIN_ID[0]);
+				// let keepableIdx = 0;
+				// const doKeepable = () => {
+				// 	if (keepableIdx < keepable.length) {
+				// 		console.log(`https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/binUtils/${fieldOpts.app}/${fieldOpts.group}/${keepable[keepableIdx]}/keep?sid=uIX-SlHU-zzYqn9urgJRtyTMno9Hvz5tL3y7EnfFXwo`);
+				// 		$.get(`https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/binUtils/${keepable[keepableIdx]}/keep?sid=uIX-SlHU-zzYqn9urgJRtyTMno9Hvz5tL3y7EnfFXwo`, (data) => {
+				// 			console.log('KEEP', data);
+				// 			keepableIdx = keepableIdx + 1;
+				// 			doKeepable();
+				// 		});
+				// 	} else {
+				// 		doDeletable();
+				// 	}
+				// }
+
+				// doKeepable();
+
+				// console.log('KEEP URL', `https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/binUtils/${fieldOpts.app}/${keepable[keepableIdx]}/keep?keepFiles=${keepable.join(',')}`);
+				// $.get(`https://was-intra-sit.toronto.ca/cc_sr_admin_v1/submit/appfactory/it_jngo2/jngo2_myDef?keepFiles=${keepable.join(',')}`, (data) => {
+				// 	console.log('KEEP', data);
+				// });
+				cbk({
+					delete: deletable,
+					keep: keepable
+				});
+			}
+
+			// Step 1 - Process unprocessed Queue
+			const step1 = () => {
+				console.log('step1');
+				if (this.getQueuedFiles().length > 0) {
+					const processQueueComplete = () => {
+						this.off('completemultiple', processQueueComplete);
+						step1();
+					};
+					this.on('completemultiple', processQueueComplete);
+					this.processQueue();
+				} else {
+					step2();
+				}
+			};
+			step1();
+		};
+
+		dz.resetFiles(fieldOpts.value);
 	});
 
 	return $el[0];
@@ -269,14 +336,17 @@ $(document).ready(function() {
 						title: 'Dropzone Field',
 						type: 'dropzone',
 						options: {
+							autoProcessQueue: false,
 							uploadMultiple: true,
-							url: 'https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/jngo2/jngo2',
-							// uploadGroup: 'jngo2',
-							// uploadSubGroup: 'jngo2',
-							// autoQueue: false
+							url: 'https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/jngo2/jngo2'
 						},
-						// value: [{"binId":"Qj3ML3jiKRAiIHwrE4P1hw","name":"test.txt","type":"text/plain","size":6}]
-						bindTo: 'dropzoneField'
+						value: [{
+							"bin_id": "Qj3ML3jiKRAiIHwrE4P1hw",
+							"name": "test.txt",
+							"type": "text/plain",
+							"size": 6
+						}],
+						bindTo: 'dropzoneField',
 					}]
 				}, {
 					fields: [{
@@ -285,7 +355,9 @@ $(document).ready(function() {
 						type: 'button',
 						onclick: (e) => {
 							e.preventDefault();
-							cotForm.finalizeDropzone();
+							cotForm.finalizeDropzone(() => {
+								console.log('done.');
+							});
 						}
 					}]
 				}]
@@ -295,7 +367,12 @@ $(document).ready(function() {
 
 		const cotFormModel = app.cotFormModel = app.cotFormModel = new CotModel({
 			textField: 'test',
-			dropzoneField: [{"binId":"Qj3ML3jiKRAiIHwrE4P1hw","name":"test.txt","type":"text/plain","size":6}]
+			dropzoneField: [{
+				"bin_id": "Qj3ML3jiKRAiIHwrE4P1hw",
+				"name": "test.txt",
+				"type": "text/plain",
+				"size": 6
+			}]
 		});
 		cotForm.setModel(cotFormModel);
 	});
