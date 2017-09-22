@@ -1,15 +1,5 @@
 /* global cot_form app Dropzone */
 
-// ((validatorOptions) => {
-// 	cot_form.prototype.validatorOptions = function(fieldDefinition) {
-// 		const retVal =  validatorOptions.call(this, fieldDefinition);
-// 		if (fieldDefinition.type == 'dropzone') {
-// 			retVal.excluded = false;
-// 		}
-// 		return retVal;
-// 	};
-// })(cot_form.prototype.validatorOptions);
-
 ((originalCotForm) => {
 	CotForm = function(definition) {
 		if (!definition) {
@@ -186,6 +176,8 @@
 })(CotForm);
 
 cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
+	console.log('*** DROPZONE FIELD RENDER ***');
+
 	if (!this.dropzones) {
 		this.dropzones = {};
 	}
@@ -193,7 +185,7 @@ cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
 		this.finalizerScripts = [];
 	}
 
-	const $el = $(`<div><input id="${fieldOpts.id}"  name="${fieldOpts.id}" type="text" data-fv-field="${fieldOpts.id}"><div class="dropzone" id="${fieldOpts.id}Dropzone" style="margin-bottom: 5px;"></div><button class="btn btn-default" id="${fieldOpts.id}Btn" style="margin: 0;">Select File to Upload</button></div>`);
+	const $el = $(`<div><input id="${fieldOpts.id}"  name="${fieldOpts.id}" type="hidden" data-fv-field="${fieldOpts.id}"><div class="dropzone" id="${fieldOpts.id}Dropzone" style="margin-bottom: 5px;"></div><button class="btn btn-default" id="${fieldOpts.id}Btn" style="margin: 0;">Select File to Upload</button></div>`);
 	const $hiddenInput = $(`#${fieldOpts.id}`, $el);
 
 	if (fieldOpts.required) {
@@ -202,19 +194,22 @@ cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
 	}
 
 	this.finalizerScripts.push(() => {
+		console.log('*** FINALIZER SCRIPTS PUSH ***');
+
 		const options = $.extend({
 			addRemoveLinks: true,
 			clickable: `#${fieldOpts.id}Btn`,
 			url: fieldOpts.options.url,
 
 			init: function() {
+				console.log('*** INIT ***');
 				this.initFiles = [];
 				this.on('completemultiple', function() {
-					console.log('completemultiple');
+					console.log('*** COMPLETE MULTIPLE ***');
 					this.setHiddenIntput();
 				});
 				this.on('removedfile', function() {
-					console.log('removedfile');
+					console.log('*** REMOVED FILE ***');
 					this.setHiddenIntput();
 				});
 			},
@@ -222,6 +217,8 @@ cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
 
 		const dz = this.dropzones[fieldOpts.id] = new Dropzone(`#${fieldOpts.id}Dropzone`, options);
 		dz.resetFiles = function(files) {
+			console.log('*** RESET FILES ***');
+
 			if (!Array.isArray(files)) {
 				try {
 					files = JSON.parse(files);
@@ -245,7 +242,8 @@ cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
 			this.setHiddenIntput();
 		};
 		dz.setHiddenIntput = function() {
-			console.log('setHiddenIntput');
+			console.log('*** SET HIDDEN INTPUT ***');
+
 			const value = this.files.filter((file) => file.status == 'initial' || file.status == 'success').map((file) => {
 				return {
 					bin_id: file.bin_id || JSON.parse(file.xhr.responseText).BIN_ID[0],
@@ -255,12 +253,14 @@ cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
 				};
 			});
 			const textValue = value.length > 0 ? JSON.stringify(value) : '';
+			console.log(fieldOpts.id, value, textValue, $hiddenInput.val(), textValue != $hiddenInput.val());
 			if (textValue != $hiddenInput.val()) {
 				$hiddenInput.val(textValue).trigger('change');
-				// $hiddenInput.closest('form').formValidation('revalidateField', fieldOpts.id);
 			}
+			console.log($hiddenInput.val())
 		};
 		dz.finalize = function(cbk) {
+			console.log('*** FINALIZE ***');
 			const step2 = () => {
 				const deletable = this.initFiles.filter((file) => this.files.indexOf(file) == -1).map((file) => file.bin_id || JSON.parse(file.xhr.responseText).BIN_ID[0]);
 				const keepable = this.files.filter((file) => this.initFiles.indexOf(file) == -1).map((file) => {
@@ -275,6 +275,7 @@ cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
 			const step1 = () => {
 				if (this.getQueuedFiles().length > 0) {
 					const processQueueComplete = () => {
+						console.log('processQueueComplete')
 						this.off('completemultiple', processQueueComplete);
 						step1();
 					};
@@ -290,13 +291,13 @@ cot_form.prototype.dropzoneFieldRender = function(fieldOpts) {
 		dz.resetFiles(fieldOpts.value);
 
 		const $form = $(`#${this.id}`);
-		const opts = $form.data('formValidation').getOptions(fieldOpts.id);
+		const opts = $form.data('formValidation').getOptions($hiddenInput);
 		opts.excluded = false;
 		// $form.data('formValidation').removeField(fieldOpts.id);
 		// $form.data('formValidation').addField(fieldOpts.id, opts);
 		// $form.data('formValidation').revalidateField($hiddenInput);
 
-		// console.log('------->', fieldOpts.id, $(`#${this.id}`).data('formValidation').getOptions(fieldOpts.id));
+		console.log('------->', fieldOpts.id, $(`#${this.id}`).data('formValidation').getOptions($hiddenInput));
 	});
 
 	return $el[0];
@@ -329,24 +330,24 @@ $(document).ready(function() {
 						bindTo: 'textField',
 						required: true
 					}]
-				}, {
-					fields: [{
-						id: 'dropzoneFieldID',
-						title: 'Dropzone Field',
-						type: 'dropzone',
-						options: {
-							autoProcessQueue: false,
-							uploadMultiple: true,
-							url: 'https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/jngo2/jngo2'
-						},
-						value: [{
-							"bin_id": "Qj3ML3jiKRAiIHwrE4P1hw",
-							"name": "test.txt",
-							"type": "text/plain",
-							"size": 6
-						}],
-						bindTo: 'dropzoneField',
-					}]
+				// }, {
+				// 	fields: [{
+				// 		id: 'dropzoneFieldID',
+				// 		title: 'Dropzone Field',
+				// 		type: 'dropzone',
+				// 		options: {
+				// 			autoProcessQueue: false,
+				// 			uploadMultiple: true,
+				// 			url: 'https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/jngo2/jngo2'
+				// 		},
+				// 		value: [{
+				// 			"bin_id": "Qj3ML3jiKRAiIHwrE4P1hw",
+				// 			"name": "test.txt",
+				// 			"type": "text/plain",
+				// 			"size": 6
+				// 		}],
+				// 		bindTo: 'dropzoneField',
+				// 	}]
 				}, {
 					fields: [{
 						id: 'dropzoneField2ID',
@@ -356,8 +357,8 @@ $(document).ready(function() {
 							autoProcessQueue: true,
 							uploadMultiple: false,
 							url: 'https://was-intra-sit.toronto.ca/cc_sr_admin_v1/upload/jngo2/jngo2'
-						},
-						required: true
+						} //,
+						// required: true
 					}]
 				}, {
 					fields: [{
